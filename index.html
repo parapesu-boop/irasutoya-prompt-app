@@ -1,0 +1,416 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>プロンプト生成（①②完全分離・安全版）</title>
+  <style>
+    body{ margin:0; font-family:system-ui,-apple-system; background:#f5f7fb; }
+    .app{ display:flex; min-height:100vh; }
+    .left{ width:420px; background:#fff; border-right:1px solid #ddd; padding:16px; box-sizing:border-box; overflow:auto; }
+    .right{ flex:1; padding:20px; box-sizing:border-box; overflow:auto; }
+    h2{ margin:0 0 10px; font-size:18px; }
+    .section{ margin-top:14px; padding-top:14px; border-top:1px solid #eee; }
+    label{ display:block; margin-top:10px; font-size:12px; font-weight:700; }
+    input, textarea, select, button{
+      width:100%; margin-top:6px; padding:8px; border-radius:10px; border:1px solid #ccc; box-sizing:border-box; font-size:14px;
+    }
+    textarea{ min-height:84px; resize:vertical; }
+    button{ border:none; background:#2563eb; color:#fff; cursor:pointer; }
+    button:hover{ background:#1e40af; }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+    .row button{ width:auto; padding:8px 12px; }
+    .ghost{ background:#f3f4f6; color:#111827; border:1px solid #d1d5db; }
+    .ghost:hover{ background:#e5e7eb; }
+    .dark{ background:#111827; }
+    .dark:hover{ background:#0b1220; }
+    pre{ background:#111827; color:#e5e7eb; padding:12px; border-radius:12px; white-space:pre-wrap; }
+    .hint{ margin-top:6px; color:#6b7280; font-size:12px; line-height:1.5; }
+    .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .badge{ display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid #d1d5db; background:#f9fafb; color:#111827; }
+    .ok{ background:#ecfdf5; border-color:#10b981; color:#065f46; }
+    .warn{ background:#fef2f2; border-color:#ef4444; color:#7f1d1d; }
+    .enBoxBad{ border-color:#ef4444 !important; outline:2px solid rgba(239,68,68,.15); }
+    @media (max-width: 900px){ .app{ flex-direction:column; } .left{ width:auto; border-right:none; border-bottom:1px solid #ddd; } }
+  </style>
+</head>
+<body>
+
+<div class="app">
+  <!-- LEFT -->
+  <div class="left">
+    <h2>設定</h2>
+    <div class="hint">
+      ✅ このHTMLは「プロンプト生成専用」<br>
+      ✅ ①（翻訳依頼）と②（英語1文）は<b>完全分離</b><br>
+      ❌ ②に「You are a professional...」を貼ると警告して③を止めます
+    </div>
+
+    <label>画像の内容（日本語）</label>
+    <textarea id="descJa" placeholder="例：いらすとや風の女性キャラクター。シンプルなワンピースで微笑みながら手を振っている。"></textarea>
+
+    <div class="grid2">
+      <div>
+        <label>アートスタイル</label>
+        <select id="style">
+          <option>いらすとや風</option>
+          <option>写真風</option>
+          <option>アニメ風</option>
+          <option>油絵風</option>
+          <option>水彩画風</option>
+          <option>デジタルアート</option>
+        </select>
+      </div>
+      <div>
+        <label>画質</label>
+        <select id="quality">
+          <option>標準</option>
+          <option>高品質</option>
+          <option>最高品質</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div>
+        <label>ライティング</label>
+        <select id="lighting">
+          <option>無し</option>
+          <option selected>自然光</option>
+          <option>夜</option>
+          <option>スタジオライト</option>
+          <option>ドラマチック</option>
+          <option>柔らかい光</option>
+          <option>逆光</option>
+        </select>
+      </div>
+      <div>
+        <label>構図</label>
+        <select id="composition">
+          <option selected>正面向き標準</option>
+          <option>横向き標準</option>
+          <option>後ろ向き標準</option>
+          <option>クローズアップ</option>
+          <option>全体像</option>
+          <option>鳥瞰図</option>
+          <option>低いアングル</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div>
+        <label>背景</label>
+        <select id="bgMode">
+          <option>無し</option>
+          <option selected>AIにおまかせ</option>
+          <option>白背景（固定）</option>
+        </select>
+      </div>
+      <div>
+        <label>装飾・テキスト</label>
+        <select id="decoMode">
+          <option selected>無し</option>
+          <option>AIにおまかせ（文字なし）</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 style="font-size:16px;margin:0;">服装・表情・ポーズ（テンプレ）</h2>
+
+      <div class="grid2">
+        <div>
+          <label>服装</label>
+          <select id="outfit">
+            <option value="">（指定なし）</option>
+            <option value="simple dress">シンプルなワンピース</option>
+            <option value="kimono">着物</option>
+            <option value="school uniform">制服</option>
+            <option value="suit">スーツ</option>
+          </select>
+        </div>
+        <div>
+          <label>表情</label>
+          <select id="expression">
+            <option value="">（指定なし）</option>
+            <option value="big smile">満面の笑み</option>
+            <option value="gentle smile">やさしく微笑む</option>
+            <option value="neutral face">無表情</option>
+            <option value="angry face">怒った顔</option>
+            <option value="sad face">悲しい顔</option>
+          </select>
+        </div>
+      </div>
+
+      <label>ポーズ</label>
+      <select id="pose">
+        <option value="">（指定なし）</option>
+        <option value="waving">手を振る</option>
+        <option value="standing">立つ</option>
+        <option value="peace sign">ピース</option>
+        <option value="sitting">座る</option>
+        <option value="pointing">指さす</option>
+      </select>
+
+      <div class="hint">
+        ※「いらすとや風」は自動で強化：太線/単純形状/色数/白背景
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="ghost" onclick="resetAll()">全部クリア</button>
+      <button class="ghost" onclick="sample()">サンプル</button>
+      <button onclick="updateAll()">更新</button>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+    <h2>出力</h2>
+
+    <div class="section" style="border-top:none; padding-top:0;">
+      <h2 style="font-size:16px;margin:0;">① 翻訳依頼（ChatGPTに貼る）</h2>
+      <div class="hint">ここは翻訳用。画像生成には使いません。</div>
+      <pre id="translateOut"></pre>
+      <div class="row">
+        <button class="dark" onclick="copyText('translateOut')">①をコピー</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 style="font-size:16px;margin:0;">② 英語Description（英語1文だけ貼る）</h2>
+      <div class="hint">
+        ✅ 貼って良い：<b>英語1文</b>（例: A cute character waving with a gentle smile.）<br>
+        ❌ 貼ってダメ：You are a professional / Translate / Japanese: / 日本語
+      </div>
+      <textarea id="descEn" placeholder="英語1文だけ貼る（指示文やJapanese:は入れない）"></textarea>
+      <div class="row">
+        <button class="ghost" onclick="clearEn()">②をクリア</button>
+        <span class="badge" id="enBadge"></span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 style="font-size:16px;margin:0;">③ 最終プロンプト（画像生成AIに貼る）</h2>
+      <div class="hint">③だけを画像生成AIに貼ります。</div>
+      <pre id="finalOut"></pre>
+      <div class="row">
+        <button class="dark" onclick="copyText('finalOut')">③をコピー</button>
+        <span class="badge" id="finalBadge"></span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 style="font-size:16px;margin:0;">手順（これだけ）</h2>
+      <pre style="background:#0b1220;">
+① 日本語を書く
+  ↓
+①をコピーしてChatGPTに貼る（翻訳）
+  ↓
+返ってきた「英語1文」だけを②に貼る
+  ↓
+③をコピーして画像生成AIに貼る
+      </pre>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== maps ===== */
+const STYLE = {
+  "いらすとや風": "simple cute illustration, flat colors, minimal shading",
+  "写真風": "photorealistic, professional photography",
+  "アニメ風": "anime style, clean lines, vibrant colors",
+  "油絵風": "oil painting, classical art style",
+  "水彩画風": "watercolor painting, soft brush strokes",
+  "デジタルアート": "digital art, concept art"
+};
+const QUALITY = {
+  "標準": "good quality",
+  "高品質": "high quality, detailed",
+  "最高品質": "masterpiece, best quality, ultra-detailed, 8K"
+};
+const LIGHTING = {
+  "無し": "",
+  "夜": "night lighting",
+  "自然光": "natural lighting",
+  "スタジオライト": "studio lighting, professional",
+  "ドラマチック": "dramatic lighting, high contrast",
+  "柔らかい光": "soft lighting, diffused",
+  "逆光": "backlit, rim lighting"
+};
+const COMPOSITION = {
+  "正面向き標準": "front view",
+  "横向き標準": "side view",
+  "後ろ向き標準": "back view",
+  "クローズアップ": "close-up shot",
+  "全体像": "full body shot, wide angle",
+  "鳥瞰図": "aerial view, top-down",
+  "低いアングル": "low angle shot"
+};
+const ILLUST_BOOST = "thick outlines, very simple shapes, limited color palette, white background";
+
+/* ===== helpers ===== */
+const $ = (id) => document.getElementById(id);
+
+async function copyText(id){
+  const el = $(id);
+  const text = (el.tagName.toLowerCase()==="pre") ? el.textContent : el.value;
+  await navigator.clipboard.writeText(text || "");
+  alert("コピーしました");
+}
+
+function buildTranslate(){
+  const ja = ($("descJa").value || "").trim();
+  const out = [
+    "You are a professional Japanese-to-English translator for image prompts.",
+    "Translate the following Japanese description into ONE natural English sentence.",
+    "Return ONLY the English sentence (no quotes, no extra text).",
+    "",
+    "Japanese:",
+    ja || "(empty)"
+  ].join("\n");
+  $("translateOut").textContent = out;
+}
+
+/* ===== strict validation for #2 ===== */
+function validateEnglishBox(raw){
+  const t = (raw || "").trim();
+  if (!t) return { ok:false, msg:"⚠ 未入力（英語1文が必要）" };
+
+  const badPatterns = [
+    /You are a professional/i,
+    /Translate the following/i,
+    /Return ONLY/i,
+    /^Japanese:/i,
+    /Japanese:\s*/i
+  ];
+  for (const re of badPatterns){
+    if (re.test(t)) return { ok:false, msg:"⚠ ②に翻訳依頼文が入っています（英語1文だけにしてください）" };
+  }
+  // If contains Japanese characters, block
+  if (/[ぁ-んァ-ン一-龯]/.test(t)) return { ok:false, msg:"⚠ ②に日本語が混ざっています（英語1文だけ）" };
+
+  // Recommend one sentence: allow period at end; forbid long comma-list (optional)
+  if (t.length > 220) return { ok:false, msg:"⚠ 長すぎます。②は英語1文だけにしてください" };
+
+  return { ok:true, msg:"✅ ②OK（英語1文）" };
+}
+
+function buildFinal(){
+  const style = $("style").value;
+  const quality = $("quality").value;
+  const lighting = $("lighting").value;
+  const composition = $("composition").value;
+  const bgMode = $("bgMode").value;
+  const decoMode = $("decoMode").value;
+
+  const outfit = $("outfit").value;
+  const expression = $("expression").value;
+  const pose = $("pose").value;
+
+  // background/deco hints
+  let bgHint = "";
+  if (bgMode === "AIにおまかせ") bgHint = (style === "いらすとや風")
+    ? "simple clean background, minimal elements"
+    : "choose a suitable background that matches the scene";
+  if (bgMode === "白背景（固定）") bgHint = "white background";
+
+  let decoHint = "";
+  if (decoMode === "AIにおまかせ（文字なし）") decoHint = (style === "いらすとや風")
+    ? "simple decorative accents, no text"
+    : "subtle decorative elements, keep it clean, no text";
+
+  const rawEn = $("descEn").value;
+  const v = validateEnglishBox(rawEn);
+
+  // badge + UI
+  $("enBadge").textContent = v.msg;
+  $("enBadge").className = "badge " + (v.ok ? "ok" : "warn");
+  $("descEn").classList.toggle("enBoxBad", !v.ok);
+
+  if (!v.ok){
+    $("finalOut").textContent = "[STOP] ②が不正です。英語1文だけ貼ってください。";
+    $("finalBadge").textContent = "⚠ ③停止中";
+    $("finalBadge").className = "badge warn";
+    return;
+  }
+
+  const descEn = rawEn.trim();
+
+  const parts = [
+    descEn,
+    STYLE[style],
+    QUALITY[quality],
+    LIGHTING[lighting],
+    COMPOSITION[composition],
+    outfit || "",
+    expression || "",
+    pose || "",
+    bgHint,
+    decoHint,
+    (style === "いらすとや風") ? ILLUST_BOOST : ""
+  ].filter(Boolean);
+
+  const final = parts.join(", ").replace(/\s+/g, " ").trim();
+  $("finalOut").textContent = final;
+  $("finalBadge").textContent = "✅ ③完成";
+  $("finalBadge").className = "badge ok";
+}
+
+function updateAll(){
+  buildTranslate();
+  buildFinal();
+}
+
+function clearEn(){
+  $("descEn").value = "";
+  updateAll();
+}
+
+function resetAll(){
+  if (!confirm("全部クリアしますか？")) return;
+  $("descJa").value = "";
+  $("descEn").value = "";
+  $("style").value = "いらすとや風";
+  $("quality").value = "標準";
+  $("lighting").value = "自然光";
+  $("composition").value = "正面向き標準";
+  $("bgMode").value = "AIにおまかせ";
+  $("decoMode").value = "無し";
+  $("outfit").value = "";
+  $("expression").value = "";
+  $("pose").value = "";
+  updateAll();
+}
+
+function sample(){
+  $("descJa").value = "いらすとや風の女性キャラクター。シンプルなワンピースで、やさしく微笑みながら手を振っている。";
+  $("descEn").value = "A cute irasutoya-style female character wearing a simple dress, gently smiling and waving.";
+  $("style").value = "いらすとや風";
+  $("quality").value = "標準";
+  $("lighting").value = "自然光";
+  $("composition").value = "正面向き標準";
+  $("bgMode").value = "AIにおまかせ";
+  $("decoMode").value = "AIにおまかせ（文字なし）";
+  $("outfit").value = "simple dress";
+  $("expression").value = "gentle smile";
+  $("pose").value = "waving";
+  updateAll();
+}
+
+/* auto update */
+[
+  "descJa","descEn","style","quality","lighting","composition","bgMode","decoMode","outfit","expression","pose"
+].forEach(id => {
+  $(id).addEventListener("input", updateAll);
+  $(id).addEventListener("change", updateAll);
+});
+
+updateAll();
+</script>
+
+</body>
+</html>
